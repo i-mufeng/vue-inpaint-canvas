@@ -5,6 +5,14 @@
   "type": "module",
   "license": "MIT",
   "author": "Mufeng",
+  "homepage": "https://github.com/i-mufeng/vue-inpaint-canvas#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/i-mufeng/vue-inpaint-canvas.git"
+  },
+  "bugs": {
+    "url": "https://github.com/i-mufeng/vue-inpaint-canvas/issues"
+  },
   "keywords": [
     "vue",
     "vue3",
@@ -29,7 +37,8 @@
     "**/*.css"
   ],
   "files": [
-    "dist"
+    "dist",
+    "README.zh-CN.md"
   ],
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -47,8 +56,7 @@
     "./package.json": "./package.json"
   },
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "scripts": {
     "dev": "vite",

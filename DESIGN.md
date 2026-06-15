@@ -334,7 +334,7 @@ export function transformedSize(w: number, h: number, t: TransformState): { widt
 | Lint/格式 | oxlint（可选 oxfmt / `vp check`，对齐 Vite+ 生态） |
 | 导出 | `.`→Vue、`./core`→框架无关核心、`./style.css`；ESM-only、`external: vue/konva` |
 | SSR | 无顶层 `window` 访问；组件在 `onMounted` 实例化 engine；宿主 Nuxt 用 `<ClientOnly>` |
-| 发布 | npm（先 `0.x`，首发打 `beta`/`next` dist-tag，几何稳定后升 `latest`）；语义化版本；MIT。`package.json` 已声明 `provenance:true`，但**发布前需在 `ci.yml` 增 release job（`permissions.id-token: write`）并在 npm 侧配置 trusted publisher (OIDC)**；当前 `ci.yml` 仅含校验步骤、无 publish job。 |
+| 发布 | npm（先 `0.x`）；语义化版本；MIT。**首发 `0.1.0` 直接打 `latest`**（几何 0.2 + 调整 UI 已落地、264 测试护栏齐，功能完整故不走 `beta`）。**采用本地手动 `npm publish`**（`npm login` 后发，`prepublishOnly` 跑 lint+typecheck+test+build 把关）；`publishConfig.access:public`、`files:["dist","README.zh-CN.md"]`。**已移除 `provenance`**——本地无 OIDC/Sigstore 环境无法生成，留着会令 `npm publish` 直接报错。供应链 provenance（CI release job + npm trusted publisher OIDC）列为发布后可选升级项（见 §10.1）。 |
 | CI | **已落地**：GitHub Actions（`install → lint → typecheck → test → build`，`--frozen-lockfile`），见 `.github/workflows/ci.yml`。L3.5 测试护栏落地后像素/坐标断言随 `test` 步成为门禁。 |
 | engines | `node >=18.12`（已收紧，node-canvas v3 prebuild 下限）。`canvas` 仅 devDep，**不影响宿主运行时**（运行时仍单依赖 `konva`）。 |
 
@@ -422,7 +422,7 @@ export function transformedSize(w: number, h: number, t: TransformState): { widt
 
 ## 十、关键决策（原未决项定调）
 
-1. **包名/发布 → 直接以 `vue-inpaint-canvas` 公开 MIT 发布，不走私有 `@scope`**。首发 `0.1.0` 打 `beta`/`next` dist-tag，几何（0.2）稳定后升 `latest`。理由：§0 定位是填补生态空白的通用库，私有化与立项冲突；`package.json` 已是无 scope + `access:public` + `provenance:true`；`@scope→无 scope` 改名会破坏已安装宿主。⚠️ **provenance 不是「已配齐」**——当前 `ci.yml` 只有校验步骤，发布前需增 release job（`permissions.id-token: write`）+ npm trusted publisher (OIDC)，列入 L7 前置 todo。
+1. **包名/发布 → 直接以 `vue-inpaint-canvas` 公开 MIT 发布，不走私有 `@scope`**（npm 上名称已确认可用、未占用）。**首发直接 `0.1.0` + `latest`**（原计划的 `beta`/`next` 已不必要：几何 0.2 与调整 UI 均已落地、264 测试护栏齐，`0.x` 版本号本身已表达 API 未稳定，`latest` 降低宿主使用门槛、最利于尽早拿反馈）。理由：§0 定位是填补生态空白的通用库，私有化与立项冲突；`@scope→无 scope` 改名会破坏已安装宿主。**发布方式：本地手动 `npm publish`**（`npm login` 后发；`prepublishOnly` 把关）；**已从 `package.json` 移除 `provenance:true`**——本地无 OIDC/Sigstore 无法生成 provenance（保留会令本地 `npm publish` 报错）。⚠️ **供应链 provenance 留作发布后可选升级**：若要启用，需在 `ci.yml` 增 release job（`permissions.id-token: write`）+ npm trusted publisher (OIDC)，把 `provenance:true` 加回 `publishConfig`，并改由 CI 打 tag 触发发布。
 2. **裁剪比例字典 → 支持宿主自定义档位（✅ L4c 已落地）**。组件 props 增 `cropRatios?: (number|'free')[]`，缺省回退 `DEFAULT_CROP_RATIOS`，裁剪子工具栏只渲染该集合并经 `setCropRatio` 驱动引擎。成本近零（默认常量已有），裁剪比例高度业务相关（社媒尺寸各异），不开放会逼宿主 fork。不阻塞 0.1，随 L4/0.2 落。验收：传自定义档位时工具栏只渲染该集合。
 3. **文档站 → 0.1/0.2 维持 playground + README，文档站延后**。待 API(props/events/expose) 在 0.3 连续两版无破坏性变更后再选 **VitePress**（比 Histoire 轻、对单组件库够用、§7 已是 vite 生态零学习成本）。当前每迭代都在改 props，过早上 story 维护成本 > 收益。归 L7/1.0 前收尾。
 4. **多 mask 笔刷形态 → 0.1 仅硬边笔刷 + 导出羽化（feather）；软笔刷（硬度/不透明度渐变）延后 0.3+ 并列为 feather 重构的依赖项**——前置必须先在 L6 把 `exportMask` 从硬二值重构为「阈值判定 + 保留/生成边缘渐变 alpha」。理由：上游把 mask 当引导（§1 精度行），导出羽化已足够让边缘自然，性价比远高于交互式软笔刷；软笔刷产生的中间 alpha 与现有硬二值导出直接冲突，且会放大 §5.4 几何重采样复杂度。类型侧先加 `export interface BrushOptions { size?: number; /* 预留 hardness?/opacity? 待本项定案 */ }` 让 `setBrush` 用它，把未决点显式编码进类型而非内联匿名对象。

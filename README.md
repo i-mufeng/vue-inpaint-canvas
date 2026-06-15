@@ -1,5 +1,11 @@
 # vue-inpaint-canvas
 
+[![npm](https://img.shields.io/npm/v/vue-inpaint-canvas.svg)](https://www.npmjs.com/package/vue-inpaint-canvas)
+[![license](https://img.shields.io/npm/l/vue-inpaint-canvas.svg)](./LICENSE)
+[![types](https://img.shields.io/npm/types/vue-inpaint-canvas.svg)](./dist/index.d.ts)
+
+**English** · [简体中文](./README.zh-CN.md)
+
 > Framework-agnostic core + Vue 3 component for **inpaint mask painting**, cropping and light adjustments — purpose-built for AI image editing (gpt-image / Stable Diffusion inpainting).
 
 Paints a **transparent-alpha PNG mask** following the OpenAI `images/edits` convention (painted area → `alpha=0` = repaint). Ships its own Konva-based engine; **no `vue-konva`, single runtime dependency (`konva`)**, theme fully host-injected.
@@ -13,10 +19,13 @@ Early but tested. The **mask pipeline** — brush / eraser / **rect-select** (op
 ## Install
 
 ```bash
-bun add vue-inpaint-canvas konva
+npm install vue-inpaint-canvas konva
+# pnpm add vue-inpaint-canvas konva
+# yarn add vue-inpaint-canvas konva
+# bun add vue-inpaint-canvas konva
 ```
 
-`vue` (^3.5) is a peer dependency.
+`vue` (^3.5) is a peer dependency — the host app provides it. `konva` is the single runtime dependency.
 
 ## Usage — Vue
 
