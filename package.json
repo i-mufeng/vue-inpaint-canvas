@@ -1,6 +1,6 @@
 {
   "name": "vue-inpaint-canvas",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Framework-agnostic core + Vue 3 component for inpaint mask painting, cropping, and light adjustments — purpose-built for AI image editing (gpt-image / Stable Diffusion inpainting). Exports transparent-alpha PNG masks per the OpenAI images/edits convention.",
   "type": "module",
   "license": "MIT",

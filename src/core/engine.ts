@@ -95,6 +95,8 @@ export class StudioEngine {
   private redoStack: Command[] = [];
   private lastCoverage = 0;
   private detachPointer: (() => void) | null = null;
+  /** 容器尺寸变化时重算「适应屏幕」缩放（modal 打开/响应式断点/窗口缩放）。 */
+  private resizeObserver: ResizeObserver | null = null;
 
   private handlers: { [K in EventName]: Set<EngineEvents[K]> } = {
     ready: new Set(),
@@ -119,6 +121,12 @@ export class StudioEngine {
     this.stage.add(this.baseLayer, this.maskLayer, this.cursorLayer, this.cropLayer);
 
     this.bindPointer();
+
+    // 容器尺寸变化（modal 打开、响应式、窗口缩放）→ 重算适应屏幕缩放。jsdom 无 ResizeObserver，守卫跳过。
+    if (typeof ResizeObserver !== "undefined") {
+      this.resizeObserver = new ResizeObserver(() => this.fitToContainer());
+      this.resizeObserver.observe(container);
+    }
   }
 
   // ---- 源图加载 -------------------------------------------------------------
@@ -468,7 +476,6 @@ export class StudioEngine {
     const size = transformedSize(this.srcW, this.srcH, t);
     this.imageW = size.width;
     this.imageH = size.height;
-    this.stage.size({ width: this.imageW, height: this.imageH });
 
     const pos = toDisplaySpace(
       { x: 0, y: 0 },
@@ -481,6 +488,29 @@ export class StudioEngine {
       layer.position(pos);
       layer.batchDraw();
     }
+    // 画幅（imageW/imageH）已定 → 重算适应屏幕缩放（stage 显示尺寸=容器，内容按比例缩放居中）。
+    this.fitToContainer();
+  }
+
+  /**
+   * 适应屏幕：stage 显示视口 = 容器尺寸，内容（imageW×imageH）按 `min(容器/画幅)` 比例缩放并居中。
+   * 显示缩放走 `stage.scale/position`，与几何（layer transform）正交、与导出（按 imageW/imageH 读 layer）解耦。
+   * 大图缩小至完整可见、小图保持原始像素（上限 1，不放大避免模糊）。jsdom 无布局（clientWidth=0）时回退为
+   * 「stage=画幅、scale=1」即旧行为，故既有像素回归测试不受影响。
+   */
+  private fitToContainer(): void {
+    if (this.imageW === 0 || this.imageH === 0) return;
+    const container = this.stage.container();
+    const cw = container.clientWidth || this.imageW;
+    const ch = container.clientHeight || this.imageH;
+    const scale = Math.min(cw / this.imageW, ch / this.imageH, 1);
+    this.stage.size({ width: cw, height: ch });
+    this.stage.scale({ x: scale, y: scale });
+    this.stage.position({
+      x: Math.round((cw - this.imageW * scale) / 2),
+      y: Math.round((ch - this.imageH * scale) / 2),
+    });
+    this.stage.batchDraw();
   }
 
   // ---- 交互式裁剪（DESIGN §5.4 L4c） -----------------------------------------
@@ -554,9 +584,12 @@ export class StudioEngine {
     this.painting = false;
   }
 
-  /** stage 指针位置（clamp 进当前画幅）。裁剪在 stage 空间，故不用 maskLayer 的本地坐标。 */
+  /**
+   * 裁剪指针（图像坐标系，clamp 进当前画幅）。用 cropLayer 的相对坐标而非裸 stage 像素，
+   * 以反算「适应屏幕」的 stage.scale/position（cropLayer 无自身 transform，其绝对变换=stage 变换）。
+   */
   private cropPointer(): Point | null {
-    const p = this.stage.getPointerPosition();
+    const p = this.cropLayer.getRelativePointerPosition();
     if (!p) return null;
     return { x: clamp(p.x, 0, this.imageW), y: clamp(p.y, 0, this.imageH) };
   }
@@ -650,6 +683,24 @@ export class StudioEngine {
 
   // ---- 导出（命脉，PoC 已验证） --------------------------------------------
 
+  /**
+   * 把某层按当前画幅(imageW×imageH)渲染到离屏 canvas，**中和适应屏幕的 stage.scale/position**。
+   * Konva 的 layer.toCanvas 会带上祖先 stage 变换（显示缩放），不中和会把显示缩放烘焙进导出致分辨率错误；
+   * 中和后立即还原（仅改属性、不重绘显示，无闪烁）。
+   */
+  private layerRegionCanvas(layer: Konva.Layer): HTMLCanvasElement {
+    const scale = this.stage.scale();
+    const position = this.stage.position();
+    this.stage.scale({ x: 1, y: 1 });
+    this.stage.position({ x: 0, y: 0 });
+    try {
+      return layer.toCanvas({ x: 0, y: 0, width: this.imageW, height: this.imageH, pixelRatio: 1 });
+    } finally {
+      this.stage.scale(scale);
+      this.stage.position(position);
+    }
+  }
+
   /** 蒙版层 → 反转 alpha 的透明 PNG。涂抹区 alpha=0（要重绘），其余黑色不透明（保留）。 */
   async exportMask(): Promise<Blob | null> {
     if (this.imageW === 0 || this.maskLayer.getChildren().length === 0) {
@@ -657,7 +708,7 @@ export class StudioEngine {
       return null;
     }
     try {
-      const src = this.maskLayer.toCanvas({ x: 0, y: 0, width: this.imageW, height: this.imageH, pixelRatio: 1 });
+      const src = this.layerRegionCanvas(this.maskLayer);
       const sdata = src.getContext("2d")!.getImageData(0, 0, this.imageW, this.imageH).data;
 
       const out = document.createElement("canvas");
@@ -700,11 +751,7 @@ export class StudioEngine {
       const ictx = imageCanvas.getContext("2d")!;
       // 调整非零时烘焙进像素（实时预览另由 Vue 层套容器 CSS filter，见 DESIGN.md §5.5）。
       ictx.filter = adjustToCssFilter(this.adjust);
-      ictx.drawImage(
-        this.baseLayer.toCanvas({ x: 0, y: 0, width: this.imageW, height: this.imageH, pixelRatio: 1 }),
-        0,
-        0,
-      );
+      ictx.drawImage(this.layerRegionCanvas(this.baseLayer), 0, 0);
 
       const image = await canvasToBlob(imageCanvas, this.options.output?.type ?? "image/png", this.options.output?.quality);
       const mask = await this.exportMask();
@@ -784,6 +831,8 @@ export class StudioEngine {
 
   destroy(): void {
     this.detachPointer?.();
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
     if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
     this.stage.destroy();
     // 复位尺寸真相源：destroy 后再调 applyTransform/export 等会因 srcW/imageW===0 安全 no-op，不触碰已销毁的 stage。
