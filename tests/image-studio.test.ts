@@ -94,6 +94,12 @@ function btnByText(wrapper: Awaited<ReturnType<typeof mountStudio>>, text: strin
   return wrapper.findAll("button").find((b) => b.text() === text);
 }
 
+// 工具按钮重构为「纯图标 + aria-label」（无可见文字）→ 按 aria-label 定位；
+// 文字类按钮（比例 chip / 应用裁剪 / 重置）仍用 btnByText。
+function btnByLabel(wrapper: Awaited<ReturnType<typeof mountStudio>>, label: string) {
+  return wrapper.findAll("button").find((b) => b.attributes("aria-label") === label);
+}
+
 beforeEach(() => {
   instances.length = 0;
 });
@@ -116,7 +122,7 @@ test("setTool 经点击转发到 engine", async () => {
   const w = await mountStudio();
   const eng = instances[0]!;
   eng.setTool.mockClear();
-  await btnByText(w, DEFAULT_LOCALE.eraser)!.trigger("click");
+  await btnByLabel(w, DEFAULT_LOCALE.eraser)!.trigger("click");
   await nextTick();
   expect(eng.setTool).toHaveBeenCalledWith("eraser");
 });
@@ -142,8 +148,8 @@ test("undo/redo/reset/clearMask 经 expose 转发", async () => {
 
 test("locale 浅合并：覆盖键生效、缺省键回退默认", async () => {
   const w = await mountStudio({ locale: { brush: "Paint" } });
-  expect(btnByText(w, "Paint")).toBeTruthy(); // 覆盖
-  expect(btnByText(w, DEFAULT_LOCALE.eraser)).toBeTruthy(); // 回退中文默认
+  expect(btnByLabel(w, "Paint")).toBeTruthy(); // 覆盖
+  expect(btnByLabel(w, DEFAULT_LOCALE.eraser)).toBeTruthy(); // 回退中文默认
 });
 
 test("maskHint 随 maskPolarity 切换", async () => {
@@ -155,13 +161,13 @@ test("maskHint 随 maskPolarity 切换", async () => {
 
 test("tools 门控：未启用工具不渲染按钮", async () => {
   const w = await mountStudio({ tools: ["brush"] });
-  expect(btnByText(w, DEFAULT_LOCALE.brush)).toBeTruthy();
-  expect(btnByText(w, DEFAULT_LOCALE.eraser)).toBeFalsy();
+  expect(btnByLabel(w, DEFAULT_LOCALE.brush)).toBeTruthy();
+  expect(btnByLabel(w, DEFAULT_LOCALE.eraser)).toBeFalsy();
 });
 
 test("tools 含 rect：渲染框选按钮，点击切到 rect", async () => {
   const w = await mountStudio({ tools: ["brush", "eraser", "rect"] });
-  const rectBtn = btnByText(w, DEFAULT_LOCALE.rect);
+  const rectBtn = btnByLabel(w, DEFAULT_LOCALE.rect);
   expect(rectBtn).toBeTruthy();
   const eng = instances[0]!;
   eng.setTool.mockClear();
@@ -172,13 +178,13 @@ test("tools 含 rect：渲染框选按钮，点击切到 rect", async () => {
 
 test("a11y：工具按钮有 aria-label 与 aria-pressed 激活态", async () => {
   const w = await mountStudio();
-  const brush = btnByText(w, DEFAULT_LOCALE.brush)!;
+  const brush = btnByLabel(w, DEFAULT_LOCALE.brush)!;
   expect(brush.attributes("aria-label")).toBe(DEFAULT_LOCALE.brush);
   expect(brush.attributes("aria-pressed")).toBe("true"); // 默认 tool=brush
-  await btnByText(w, DEFAULT_LOCALE.eraser)!.trigger("click");
+  await btnByLabel(w, DEFAULT_LOCALE.eraser)!.trigger("click");
   await nextTick();
   expect(brush.attributes("aria-pressed")).toBe("false");
-  expect(btnByText(w, DEFAULT_LOCALE.eraser)!.attributes("aria-pressed")).toBe("true");
+  expect(btnByLabel(w, DEFAULT_LOCALE.eraser)!.attributes("aria-pressed")).toBe("true");
 });
 
 test("setBrush 经 expose 走内部 ref（同步滑块 + 转发 engine）", async () => {
@@ -214,27 +220,27 @@ test("cursor class：涂抹工具下 .vic-canvas 含 vic-cursor-none，非涂抹
 test("tools 含 rotate/flip：渲染几何按钮，点击转发 engine 命令", async () => {
   const w = await mountStudio({ tools: ["brush", "rotate", "flip"] });
   const eng = instances[0]!;
-  await btnByText(w, DEFAULT_LOCALE.rotate)!.trigger("click");
+  await btnByLabel(w, DEFAULT_LOCALE.rotate)!.trigger("click");
   expect(eng.rotate).toHaveBeenCalledWith("cw");
-  await btnByText(w, DEFAULT_LOCALE.flipHorizontal)!.trigger("click");
+  await btnByLabel(w, DEFAULT_LOCALE.flipHorizontal)!.trigger("click");
   expect(eng.flipHorizontal).toHaveBeenCalledOnce();
-  await btnByText(w, DEFAULT_LOCALE.flipVertical)!.trigger("click");
+  await btnByLabel(w, DEFAULT_LOCALE.flipVertical)!.trigger("click");
   expect(eng.flipVertical).toHaveBeenCalledOnce();
 });
 
 test("tools 门控：未启用 rotate/flip 不渲染几何按钮", async () => {
   const w = await mountStudio({ tools: ["brush", "eraser"] });
-  expect(btnByText(w, DEFAULT_LOCALE.rotate)).toBeFalsy();
-  expect(btnByText(w, DEFAULT_LOCALE.flipHorizontal)).toBeFalsy();
-  expect(btnByText(w, DEFAULT_LOCALE.flipVertical)).toBeFalsy();
+  expect(btnByLabel(w, DEFAULT_LOCALE.rotate)).toBeFalsy();
+  expect(btnByLabel(w, DEFAULT_LOCALE.flipHorizontal)).toBeFalsy();
+  expect(btnByLabel(w, DEFAULT_LOCALE.flipVertical)).toBeFalsy();
 });
 
 test("几何动作不切换当前绘制工具（rotate/flip 为即时命令）", async () => {
   const w = await mountStudio({ tools: ["brush", "rotate", "flip"] });
-  await btnByText(w, DEFAULT_LOCALE.rotate)!.trigger("click");
+  await btnByLabel(w, DEFAULT_LOCALE.rotate)!.trigger("click");
   await nextTick();
   // 绘制工具仍是 brush（aria-pressed 保持），rotate 不抢占工具态
-  expect(btnByText(w, DEFAULT_LOCALE.brush)!.attributes("aria-pressed")).toBe("true");
+  expect(btnByLabel(w, DEFAULT_LOCALE.brush)!.attributes("aria-pressed")).toBe("true");
 });
 
 test("applyTransform/rotate/flip 经 expose 转发到 engine", async () => {
@@ -261,7 +267,7 @@ test("crop 工具：点击进入裁剪模式，渲染比例子工具栏并转发
   const eng = instances[0]!;
   // 默认无裁剪子工具栏
   expect(w.find(".vic-crop-bar").exists()).toBe(false);
-  await btnByText(w, DEFAULT_LOCALE.crop)!.trigger("click");
+  await btnByLabel(w, DEFAULT_LOCALE.crop)!.trigger("click");
   await nextTick();
   expect(eng.setTool).toHaveBeenCalledWith("crop"); // 进入裁剪模式
   expect(w.find(".vic-crop-bar").exists()).toBe(true);
@@ -276,14 +282,14 @@ test("crop 工具：点击进入裁剪模式，渲染比例子工具栏并转发
 test("crop 子工具栏：应用/取消转发 engine 并退出裁剪模式回画笔", async () => {
   const w = await mountStudio({ tools: ["brush", "crop"] });
   const eng = instances[0]!;
-  await btnByText(w, DEFAULT_LOCALE.crop)!.trigger("click");
+  await btnByLabel(w, DEFAULT_LOCALE.crop)!.trigger("click");
   await nextTick();
   await btnByText(w, DEFAULT_LOCALE.applyCrop)!.trigger("click");
   await nextTick();
   expect(eng.applyCrop).toHaveBeenCalledOnce();
   expect(w.find(".vic-crop-bar").exists()).toBe(false); // 回到画笔，子工具栏消失
   // 再进裁剪 → 取消（"取消"在主栏与裁剪子栏都有，需 scope 到子栏避免命中主栏 emit('cancel')）
-  await btnByText(w, DEFAULT_LOCALE.crop)!.trigger("click");
+  await btnByLabel(w, DEFAULT_LOCALE.crop)!.trigger("click");
   await nextTick();
   const cropBarCancel = w.find(".vic-crop-bar").findAll("button").find((b) => b.text() === DEFAULT_LOCALE.cancel);
   await cropBarCancel!.trigger("click");
@@ -296,7 +302,7 @@ test("adjust 工具：进入调整模式渲染滑块面板，拖动转发 setAdj
   const w = await mountStudio({ tools: ["brush", "adjust"] });
   const eng = instances[0]!;
   expect(w.find(".vic-adjust-bar").exists()).toBe(false);
-  await btnByText(w, DEFAULT_LOCALE.adjust)!.trigger("click");
+  await btnByLabel(w, DEFAULT_LOCALE.adjust)!.trigger("click");
   await nextTick();
   expect(eng.setTool).toHaveBeenCalledWith("adjust");
   expect(w.find(".vic-adjust-bar").exists()).toBe(true);
@@ -314,7 +320,7 @@ test("adjust 工具：进入调整模式渲染滑块面板，拖动转发 setAdj
 
 test("adjust 实时预览：非零调整给画布套 CSS filter，归零清除", async () => {
   const w = await mountStudio({ tools: ["brush", "adjust"] });
-  await btnByText(w, DEFAULT_LOCALE.adjust)!.trigger("click");
+  await btnByLabel(w, DEFAULT_LOCALE.adjust)!.trigger("click");
   await nextTick();
   const canvas = w.get(".vic-canvas");
   expect(canvas.attributes("style") ?? "").not.toContain("brightness"); // 初始无 filter
@@ -328,7 +334,7 @@ test("adjust 实时预览：非零调整给画布套 CSS filter，归零清除",
 test("adjust 重置：归零滑块 + 转发 setAdjust/commitAdjust", async () => {
   const w = await mountStudio({ tools: ["brush", "adjust"] });
   const eng = instances[0]!;
-  await btnByText(w, DEFAULT_LOCALE.adjust)!.trigger("click");
+  await btnByLabel(w, DEFAULT_LOCALE.adjust)!.trigger("click");
   await nextTick();
   const range = w.findAll(".vic-adjust-bar input[type='range']")[1]!; // 对比度
   await range.setValue(30);
@@ -353,7 +359,7 @@ test("setAdjust/commitAdjust 经 expose 转发并同步滑块面板", async () =
   expect(eng.setAdjust).toHaveBeenCalled();
   expect(eng.setAdjust.mock.calls.at(-1)![0]).toMatchObject({ saturate: -20 });
   expect(eng.commitAdjust).toHaveBeenCalledOnce();
-  await btnByText(w, DEFAULT_LOCALE.adjust)!.trigger("click");
+  await btnByLabel(w, DEFAULT_LOCALE.adjust)!.trigger("click");
   await nextTick();
   const range = w.findAll(".vic-adjust-bar input[type='range']")[2]!; // 饱和度
   expect((range.element as HTMLInputElement).value).toBe("-20"); // expose 已同步滑块
@@ -364,4 +370,75 @@ test("ready 态 exportResult 转发到 engine 并 resolve", async () => {
   const r = await (w.vm as unknown as { exportResult: () => Promise<{ hasMask: boolean }> }).exportResult();
   expect(instances[0]!.exportResult).toHaveBeenCalledOnce();
   expect(r.hasMask).toBe(false);
+});
+
+// —— 键盘快捷键 —— //
+test("快捷键：B/E/R 切工具（仅启用时）转发 engine", async () => {
+  const w = await mountStudio({ tools: ["brush", "eraser", "rect"] });
+  const eng = instances[0]!;
+  eng.setTool.mockClear();
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "e" }));
+  await nextTick();
+  expect(eng.setTool).toHaveBeenCalledWith("eraser");
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "r" }));
+  await nextTick();
+  expect(eng.setTool).toHaveBeenCalledWith("rect");
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "b" }));
+  await nextTick();
+  expect(eng.setTool).toHaveBeenCalledWith("brush");
+  w.unmount();
+});
+
+test("快捷键：未启用的工具键不触发（B 在仅几何模型下无效）", async () => {
+  const w = await mountStudio({ tools: ["crop", "rotate"] });
+  const eng = instances[0]!;
+  eng.setTool.mockClear();
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "b" }));
+  await nextTick();
+  expect(eng.setTool).not.toHaveBeenCalled();
+  w.unmount();
+});
+
+test("快捷键：[ ] 调整笔刷粗细并夹取边界", async () => {
+  const w = await mountStudio({ brushSize: 40 });
+  const val = () => (w.get('input[type="range"]').element as HTMLInputElement).value;
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "[" }));
+  await nextTick();
+  expect(val()).toBe("36");
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "]" }));
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "]" }));
+  await nextTick();
+  expect(val()).toBe("44");
+  w.unmount();
+});
+
+test("快捷键：带修饰键的字母不触发工具切换", async () => {
+  const w = await mountStudio({ tools: ["brush", "eraser"] });
+  const eng = instances[0]!;
+  eng.setTool.mockClear();
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "e", ctrlKey: true }));
+  await nextTick();
+  expect(eng.setTool).not.toHaveBeenCalled();
+  w.unmount();
+});
+
+test("快捷键：输入态（input 聚焦）跳过单键快捷键", async () => {
+  const w = await mountStudio({ tools: ["brush", "eraser"] });
+  const eng = instances[0]!;
+  eng.setTool.mockClear();
+  const input = document.createElement("input");
+  document.body.appendChild(input);
+  input.dispatchEvent(new KeyboardEvent("keydown", { key: "e", bubbles: true }));
+  await nextTick();
+  expect(eng.setTool).not.toHaveBeenCalled();
+  input.remove();
+  w.unmount();
+});
+
+test("快捷键：Esc 触发 cancel 事件", async () => {
+  const w = await mountStudio();
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  await nextTick();
+  expect(w.emitted("cancel")).toBeTruthy();
+  w.unmount();
 });

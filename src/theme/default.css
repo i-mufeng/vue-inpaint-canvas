@@ -1,6 +1,7 @@
 /*
- * 默认主题（中性暗色）+ 基础布局。
+ * 默认主题（中性暗色）+ 工具坞布局。
  * 宿主用 :theme prop 或外层覆盖 --vic-* 即可融入自身设计系统；明暗由宿主按需给值。
+ * 仅用 --vic-* 变量 + color-mix 派生（tint/ring/glow/hover），不写死任何明暗色值。
  */
 .vic-studio {
   --vic-accent: #7c5cff;
@@ -12,6 +13,13 @@
   --vic-border: rgba(180, 150, 255, 0.16);
   --vic-radius: 12px;
 
+  /* 由 accent / text 派生的语义色，随宿主覆盖的基础变量自动联动（color-mix 惰性求值）。 */
+  --vic-accent-tint: color-mix(in srgb, var(--vic-accent) 15%, transparent);
+  --vic-accent-ring: color-mix(in srgb, var(--vic-accent) 40%, transparent);
+  --vic-accent-glow: color-mix(in srgb, var(--vic-accent) 48%, transparent);
+  --vic-hover: color-mix(in srgb, var(--vic-text) 8%, transparent);
+  --vic-track: color-mix(in srgb, var(--vic-text) 16%, transparent);
+
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -22,110 +30,282 @@
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
+.vic-icon {
+  display: block;
+  flex: none;
+}
+
+/* —— 工具坞 —— */
 .vic-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   flex-wrap: wrap;
-}
-
-.vic-toolbar button {
-  padding: 6px 12px;
-  border-radius: 8px;
-  font-size: 13px;
-  cursor: pointer;
+  padding: 6px;
+  border: 1px solid var(--vic-border);
+  border-radius: calc(var(--vic-radius) + 2px);
   background: var(--vic-surface);
-  color: var(--vic-text);
-  border: 1px solid var(--vic-border);
-  transition: border-color 0.15s ease, color 0.15s ease;
+  box-shadow: 0 10px 30px -22px rgba(0, 0, 0, 0.7);
 }
 
-.vic-toolbar button.is-active {
-  border-color: var(--vic-accent);
-  color: var(--vic-accent);
-}
-
-.vic-toolbar button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.vic-apply {
-  background: var(--vic-accent) !important;
-  color: #fff !important;
-  border: none !important;
-}
-
-.vic-ghost {
-  background: transparent !important;
-}
-
-.vic-brush {
+.vic-group {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--vic-text-muted);
+  gap: 2px;
 }
 
-/* mask 反转语义提示（红线①）；只用 muted 变量，不引入新 token。 */
-.vic-mask-hint {
-  font-size: 12px;
-  color: var(--vic-text-muted);
-}
-
-/* 裁剪子工具栏（仅裁剪模式可见）：比例档位 + 应用/取消，沿用工具栏按钮样式。 */
-.vic-crop-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 8px;
-  border: 1px solid var(--vic-border);
-  border-radius: var(--vic-radius);
-  background: var(--vic-surface);
-}
-
-.vic-crop-bar button {
-  padding: 6px 12px;
-  border-radius: 8px;
-  font-size: 13px;
-  cursor: pointer;
-  background: var(--vic-elevated);
-  color: var(--vic-text);
-  border: 1px solid var(--vic-border);
-  transition: border-color 0.15s ease, color 0.15s ease;
-}
-
-.vic-crop-bar button.is-active {
-  border-color: var(--vic-accent);
-  color: var(--vic-accent);
-}
-
-/* 调整子工具栏（仅调整模式可见）：亮度/对比度/饱和度滑块。 */
-.vic-adjust-bar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  padding: 8px 12px;
-  border: 1px solid var(--vic-border);
-  border-radius: var(--vic-radius);
-  background: var(--vic-surface);
-}
-
-.vic-adjust {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--vic-text-muted);
+.vic-divider {
+  width: 1px;
+  height: 22px;
+  flex: none;
+  margin: 0 4px;
+  border-radius: 1px;
+  background: var(--vic-border);
 }
 
 .vic-spacer {
   flex: 1;
 }
 
+/* 图标工具按钮：默认幽灵态 → hover 浮起 → 激活辉光（accent tint + ring + glow）。 */
+.vic-tool {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--vic-text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.12s ease;
+}
+
+.vic-tool:hover:not(:disabled) {
+  color: var(--vic-text);
+  background: var(--vic-hover);
+}
+
+.vic-tool:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.vic-tool.is-active {
+  color: var(--vic-accent);
+  background: var(--vic-accent-tint);
+  border-color: var(--vic-accent-ring);
+  box-shadow: 0 6px 16px -8px var(--vic-accent-glow);
+}
+
+.vic-tool:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* 文本动作按钮（取消 / 应用 / 应用裁剪 / 重置）。 */
+.vic-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--vic-text);
+  background: var(--vic-elevated);
+  border: 1px solid var(--vic-border);
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.12s ease;
+}
+
+.vic-btn:active {
+  transform: translateY(1px);
+}
+
+.vic-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--vic-text-muted);
+}
+
+.vic-ghost:hover {
+  color: var(--vic-text);
+  background: var(--vic-hover);
+}
+
+.vic-apply {
+  color: #fff;
+  background: var(--vic-accent);
+  border-color: transparent;
+  box-shadow: 0 8px 20px -10px var(--vic-accent-glow);
+}
+
+.vic-apply:hover {
+  filter: brightness(1.07);
+  box-shadow: 0 10px 26px -10px var(--vic-accent-glow);
+}
+
+/* —— 上下文子区（绘制上下文 / 裁剪 / 调整）共享卡片底座 —— */
+.vic-subbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 9px 12px;
+  border: 1px solid var(--vic-border);
+  border-radius: var(--vic-radius);
+  background: var(--vic-surface);
+}
+
+.vic-subbar-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vic-text-muted);
+}
+
+/* 绘制上下文：笔刷粗细滑块 + 实时尺寸圆点 + 蒙版语义提示。 */
+.vic-brush {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--vic-text-muted);
+}
+
+.vic-brush-value {
+  min-width: 3ch;
+  text-align: right;
+  color: var(--vic-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.vic-brush-dot {
+  flex: none;
+  border-radius: 50%;
+  background: var(--vic-accent);
+  box-shadow: 0 0 0 4px var(--vic-accent-tint);
+  transition:
+    width 0.1s ease,
+    height 0.1s ease;
+}
+
+.vic-mask-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--vic-text-muted);
+}
+
+/* 与画布上「涂抹高亮色」呼应的色块，把「紫色 = 重绘/保留」的语义可视化。 */
+.vic-mask-swatch {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 4px;
+  background: var(--vic-accent);
+  box-shadow: 0 0 0 1px var(--vic-accent-ring);
+}
+
+/* 裁剪比例档位 chip。 */
+.vic-chip {
+  padding: 5px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--vic-text-muted);
+  background: var(--vic-elevated);
+  border: 1px solid transparent;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.vic-chip:hover {
+  color: var(--vic-text);
+}
+
+.vic-chip.is-active {
+  color: var(--vic-accent);
+  background: var(--vic-accent-tint);
+  border-color: var(--vic-accent-ring);
+}
+
+/* 调整滑块组。 */
+.vic-adjust {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--vic-text-muted);
+}
+
+.vic-adjust-value {
+  min-width: 3.5ch;
+  text-align: right;
+  color: var(--vic-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* —— 统一 range 样式：细轨 + accent 圆头 —— */
+.vic-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 124px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--vic-track);
+  outline: none;
+  cursor: pointer;
+  accent-color: var(--vic-accent);
+}
+
+.vic-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--vic-accent);
+  border: 2px solid var(--vic-surface);
+  box-shadow: 0 1px 5px -1px rgba(0, 0, 0, 0.5);
+  transition: transform 0.12s ease;
+}
+
+.vic-range::-webkit-slider-thumb:hover {
+  transform: scale(1.18);
+}
+
+.vic-range::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  border: 2px solid var(--vic-surface);
+  border-radius: 50%;
+  background: var(--vic-accent);
+  box-shadow: 0 1px 5px -1px rgba(0, 0, 0, 0.5);
+}
+
+.vic-range::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--vic-track);
+}
+
+/* —— 画布 —— */
 .vic-canvas {
   width: 100%;
   aspect-ratio: 1;
@@ -142,10 +322,54 @@
   cursor: none;
 }
 
+/* —— 焦点可见性（键盘可达）—— */
+.vic-tool:focus-visible,
+.vic-btn:focus-visible,
+.vic-chip:focus-visible,
+.vic-range:focus-visible {
+  outline: 2px solid var(--vic-accent);
+  outline-offset: 2px;
+}
+
+/* —— 上下文子区切换过渡 —— */
+/* slot 作定位上下文：离场元素绝对定位脱流，同高子栏交叉淡入不塌陷；空态整体收起省去多余间距。 */
+.vic-sub-slot {
+  position: relative;
+}
+
+.vic-sub-slot:empty {
+  display: none;
+}
+
+.vic-sub-enter-active,
+.vic-sub-leave-active {
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+
+.vic-sub-leave-active {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+}
+
+.vic-sub-enter-from,
+.vic-sub-leave-to {
+  opacity: 0;
+  transform: translateY(-3px);
+}
+
 /* 可访问性：尊重减少动效偏好（DESIGN §9）。 */
 @media (prefers-reduced-motion: reduce) {
-  .vic-toolbar button,
-  .vic-crop-bar button {
+  .vic-tool,
+  .vic-btn,
+  .vic-chip,
+  .vic-range::-webkit-slider-thumb,
+  .vic-brush-dot,
+  .vic-sub-enter-active,
+  .vic-sub-leave-active {
     transition: none;
   }
 }

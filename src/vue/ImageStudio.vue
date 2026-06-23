@@ -17,6 +17,7 @@ import type {
   StudioTool,
   TransformState,
 } from "../core/types";
+import { VicIcon } from "./icons";
 import "../theme/default.css";
 
 // Vue 3.5 reactive props destructure：默认值内联，解构变量在 watch/模板里仍保持响应式。
@@ -79,7 +80,20 @@ const maskHint = computed(() =>
   maskPolarity === "paint-to-edit" ? t.value.maskHintEdit : t.value.maskHintKeep,
 );
 const showTool = (n: StudioTool): boolean => tools.includes(n);
+// 涂抹工具（自绘光标 + 笔刷粗细）：仅画笔/橡皮。
 const isPaintTool = computed(() => tool.value === "brush" || tool.value === "eraser");
+// 蒙版工具（圈定要重绘区域）：画笔/橡皮/框选——决定蒙版语义提示与上下文条是否浮现。
+const isMaskTool = computed(() => isPaintTool.value || tool.value === "rect");
+
+// —— 工具栏分组可见性（驱动分段与分隔线渲染）——
+const showPaint = computed(() => showTool("brush") || showTool("eraser") || showTool("rect"));
+const showTransform = computed(
+  () => showTool("rotate") || showTool("flip") || showTool("crop"),
+);
+const showAdjust = computed(() => showTool("adjust"));
+
+// 笔刷粗细的实时预览圆点直径（随 size 放大，封顶 26px 不撑破上下文条）。
+const brushDotSize = computed(() => Math.min(26, 4 + brushSize.value * 0.2));
 
 const themeVars = computed<Record<string, string>>(() => {
   const entries: [string, string | undefined][] = [
@@ -114,6 +128,8 @@ onMounted(async () => {
   await engine.loadSource(source);
   engine.setTool(tool.value);
   engine.setBrush({ size: brushSize.value });
+  // 键盘快捷键：组件挂载期内挂 window（工作台多为全屏弹窗，独占焦点）。
+  window.addEventListener("keydown", onKeydown);
 });
 
 watch(
@@ -144,7 +160,10 @@ watch(
   },
 );
 
-onBeforeUnmount(() => engine?.destroy());
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", onKeydown);
+  engine?.destroy();
+});
 
 async function apply(): Promise<void> {
   if (engine) emit("apply", await engine.exportResult());
@@ -206,6 +225,76 @@ function onAdjustReset(): void {
   engine?.commitAdjust();
 }
 
+// —— 键盘快捷键 —— //
+// B/E/R 切工具（仅启用时）、[ ] 调笔刷、⌘/Ctrl+Z 撤销、⌘⇧Z/⌘Y 重做、Enter 应用、Esc 取消。
+function onKeydown(e: KeyboardEvent): void {
+  const el = e.target as HTMLElement | null;
+  const editable = !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+  const mod = e.metaKey || e.ctrlKey;
+  // 撤销/重做：焦点在滑块也允许（绘制流程中常态）。
+  if (mod && (e.key === "z" || e.key === "Z")) {
+    e.preventDefault();
+    if (e.shiftKey) {
+      if (state.value?.canRedo) onRedo();
+    } else if (state.value?.canUndo) {
+      onUndo();
+    }
+    return;
+  }
+  if (mod && (e.key === "y" || e.key === "Y")) {
+    e.preventDefault();
+    if (state.value?.canRedo) onRedo();
+    return;
+  }
+  if (mod) return;
+  if (e.key === "Escape") {
+    e.preventDefault();
+    emit("cancel");
+    return;
+  }
+  if (e.key === "Enter") {
+    // 焦点在按钮上时交给原生点击，避免重复触发。
+    if (el?.tagName === "BUTTON") return;
+    e.preventDefault();
+    if (tool.value === "crop") onApplyCrop();
+    else void apply();
+    return;
+  }
+  if (editable) return; // 单键快捷键在输入态跳过
+  switch (e.key.toLowerCase()) {
+    case "b":
+      if (showTool("brush")) {
+        e.preventDefault();
+        tool.value = "brush";
+      }
+      break;
+    case "e":
+      if (showTool("eraser")) {
+        e.preventDefault();
+        tool.value = "eraser";
+      }
+      break;
+    case "r":
+      if (showTool("rect")) {
+        e.preventDefault();
+        tool.value = "rect";
+      }
+      break;
+    case "[":
+      if (isPaintTool.value) {
+        e.preventDefault();
+        brushSize.value = Math.max(4, brushSize.value - 4);
+      }
+      break;
+    case "]":
+      if (isPaintTool.value) {
+        e.preventDefault();
+        brushSize.value = Math.min(120, brushSize.value + 4);
+      }
+      break;
+  }
+}
+
 // 未就绪时 reject（而非静默返回 undefined），让宿主拿到干净的 Promise 契约。
 const notReady = (): Promise<never> => Promise.reject(new Error("ImageStudio 尚未就绪"));
 defineExpose({
@@ -242,138 +331,268 @@ defineExpose({
 
 <template>
   <div class="vic-studio" :style="themeVars">
-    <div class="vic-toolbar">
-      <button
-        v-if="showTool('brush')"
-        :class="{ 'is-active': tool === 'brush' }"
-        :aria-label="t.brush"
-        :aria-pressed="tool === 'brush'"
-        @click="tool = 'brush'"
-      >
-        {{ t.brush }}
-      </button>
-      <button
-        v-if="showTool('eraser')"
-        :class="{ 'is-active': tool === 'eraser' }"
-        :aria-label="t.eraser"
-        :aria-pressed="tool === 'eraser'"
-        @click="tool = 'eraser'"
-      >
-        {{ t.eraser }}
-      </button>
-      <button
-        v-if="showTool('rect')"
-        :class="{ 'is-active': tool === 'rect' }"
-        :aria-label="t.rect"
-        :aria-pressed="tool === 'rect'"
-        @click="tool = 'rect'"
-      >
-        {{ t.rect }}
-      </button>
-      <button v-if="showTool('rotate')" :aria-label="t.rotate" @click="onRotate">{{ t.rotate }}</button>
-      <button
-        v-if="showTool('flip')"
-        :class="{ 'is-active': state?.transform.flipX }"
-        :aria-label="t.flipHorizontal"
-        :aria-pressed="!!state?.transform.flipX"
-        @click="onFlipH"
-      >
-        {{ t.flipHorizontal }}
-      </button>
-      <button
-        v-if="showTool('flip')"
-        :class="{ 'is-active': state?.transform.flipY }"
-        :aria-label="t.flipVertical"
-        :aria-pressed="!!state?.transform.flipY"
-        @click="onFlipV"
-      >
-        {{ t.flipVertical }}
-      </button>
-      <button
-        v-if="showTool('crop')"
-        :class="{ 'is-active': tool === 'crop' }"
-        :aria-label="t.crop"
-        :aria-pressed="tool === 'crop'"
-        @click="tool = 'crop'"
-      >
-        {{ t.crop }}
-      </button>
-      <button
-        v-if="showTool('adjust')"
-        :class="{ 'is-active': tool === 'adjust' }"
-        :aria-label="t.adjust"
-        :aria-pressed="tool === 'adjust'"
-        @click="tool = 'adjust'"
-      >
-        {{ t.adjust }}
-      </button>
-      <button :aria-label="t.clear" @click="onClear">{{ t.clear }}</button>
-      <button :disabled="!state?.canUndo" :aria-label="t.undo" @click="onUndo">{{ t.undo }}</button>
-      <button :disabled="!state?.canRedo" :aria-label="t.redo" @click="onRedo">{{ t.redo }}</button>
-      <label class="vic-brush">
-        {{ t.brushSize }} {{ brushSize }}
-        <input v-model.number="brushSize" type="range" min="4" max="120" :aria-label="t.brushSize" />
-      </label>
-      <span class="vic-mask-hint" aria-live="polite">{{ maskHint }}</span>
+    <!-- 工具坞：分段分组（绘制 / 变换 / 调整 / 历史 / 操作），分隔线只在相邻非空组间出现 -->
+    <div class="vic-toolbar" role="toolbar">
+      <!-- 绘制组：画笔 / 橡皮 / 框选 / 清除蒙版 -->
+      <div v-if="showPaint" class="vic-group">
+        <button
+          v-if="showTool('brush')"
+          class="vic-tool"
+          :class="{ 'is-active': tool === 'brush' }"
+          :aria-label="t.brush"
+          :aria-pressed="tool === 'brush'"
+          :title="t.brush"
+          @click="tool = 'brush'"
+        >
+          <VicIcon name="brush" />
+        </button>
+        <button
+          v-if="showTool('eraser')"
+          class="vic-tool"
+          :class="{ 'is-active': tool === 'eraser' }"
+          :aria-label="t.eraser"
+          :aria-pressed="tool === 'eraser'"
+          :title="t.eraser"
+          @click="tool = 'eraser'"
+        >
+          <VicIcon name="eraser" />
+        </button>
+        <button
+          v-if="showTool('rect')"
+          class="vic-tool"
+          :class="{ 'is-active': tool === 'rect' }"
+          :aria-label="t.rect"
+          :aria-pressed="tool === 'rect'"
+          :title="t.rect"
+          @click="tool = 'rect'"
+        >
+          <VicIcon name="rect" />
+        </button>
+        <button class="vic-tool" :aria-label="t.clear" :title="t.clear" @click="onClear">
+          <VicIcon name="clear" />
+        </button>
+      </div>
+
+      <span v-if="showPaint && showTransform" class="vic-divider" aria-hidden="true" />
+
+      <!-- 变换组：旋转 / 水平翻转 / 垂直翻转 / 裁剪 -->
+      <div v-if="showTransform" class="vic-group">
+        <button
+          v-if="showTool('rotate')"
+          class="vic-tool"
+          :aria-label="t.rotate"
+          :title="t.rotate"
+          @click="onRotate"
+        >
+          <VicIcon name="rotate" />
+        </button>
+        <button
+          v-if="showTool('flip')"
+          class="vic-tool"
+          :class="{ 'is-active': state?.transform.flipX }"
+          :aria-label="t.flipHorizontal"
+          :aria-pressed="!!state?.transform.flipX"
+          :title="t.flipHorizontal"
+          @click="onFlipH"
+        >
+          <VicIcon name="flipH" />
+        </button>
+        <button
+          v-if="showTool('flip')"
+          class="vic-tool"
+          :class="{ 'is-active': state?.transform.flipY }"
+          :aria-label="t.flipVertical"
+          :aria-pressed="!!state?.transform.flipY"
+          :title="t.flipVertical"
+          @click="onFlipV"
+        >
+          <VicIcon name="flipV" />
+        </button>
+        <button
+          v-if="showTool('crop')"
+          class="vic-tool"
+          :class="{ 'is-active': tool === 'crop' }"
+          :aria-label="t.crop"
+          :aria-pressed="tool === 'crop'"
+          :title="t.crop"
+          @click="tool = 'crop'"
+        >
+          <VicIcon name="crop" />
+        </button>
+      </div>
+
+      <span
+        v-if="(showPaint || showTransform) && showAdjust"
+        class="vic-divider"
+        aria-hidden="true"
+      />
+
+      <!-- 调整组 -->
+      <div v-if="showAdjust" class="vic-group">
+        <button
+          class="vic-tool"
+          :class="{ 'is-active': tool === 'adjust' }"
+          :aria-label="t.adjust"
+          :aria-pressed="tool === 'adjust'"
+          :title="t.adjust"
+          @click="tool = 'adjust'"
+        >
+          <VicIcon name="adjust" />
+        </button>
+      </div>
+
+      <span
+        v-if="showPaint || showTransform || showAdjust"
+        class="vic-divider"
+        aria-hidden="true"
+      />
+
+      <!-- 历史组：撤销 / 重做 -->
+      <div class="vic-group">
+        <button
+          class="vic-tool"
+          :disabled="!state?.canUndo"
+          :aria-label="t.undo"
+          :title="t.undo"
+          @click="onUndo"
+        >
+          <VicIcon name="undo" />
+        </button>
+        <button
+          class="vic-tool"
+          :disabled="!state?.canRedo"
+          :aria-label="t.redo"
+          :title="t.redo"
+          @click="onRedo"
+        >
+          <VicIcon name="redo" />
+        </button>
+      </div>
+
       <span class="vic-spacer" />
-      <button class="vic-ghost" :aria-label="t.cancel" @click="emit('cancel')">{{ t.cancel }}</button>
-      <button class="vic-apply" :aria-label="t.apply" @click="apply">{{ t.apply }}</button>
+
+      <!-- 操作组：取消（幽灵）/ 应用（强调） -->
+      <div class="vic-group vic-actions">
+        <button class="vic-btn vic-ghost" :aria-label="t.cancel" @click="emit('cancel')">
+          <VicIcon name="cancel" :size="16" />
+          <span>{{ t.cancel }}</span>
+        </button>
+        <button class="vic-btn vic-apply" :aria-label="t.apply" @click="apply">
+          <VicIcon name="apply" :size="16" />
+          <span>{{ t.apply }}</span>
+        </button>
+      </div>
     </div>
-    <div v-if="tool === 'crop'" class="vic-crop-bar">
-      <button
-        v-for="r in cropRatios"
-        :key="String(r)"
-        :class="{ 'is-active': cropRatio === r }"
-        :aria-label="ratioLabel(r)"
-        :aria-pressed="cropRatio === r"
-        @click="onCropRatio(r)"
-      >
-        {{ ratioLabel(r) }}
-      </button>
-      <span class="vic-spacer" />
-      <button class="vic-ghost" :aria-label="t.cancel" @click="onCancelCrop">{{ t.cancel }}</button>
-      <button class="vic-apply" :aria-label="t.applyCrop" @click="onApplyCrop">{{ t.applyCrop }}</button>
+
+    <!-- 上下文子区：随当前工具切换（绘制上下文 / 裁剪档位 / 调整滑块），互斥单显。
+         离场元素绝对定位 → 同高子栏交叉淡入不塌陷、画布不跳动；空态由 :empty 收起。 -->
+    <div class="vic-sub-slot">
+      <Transition name="vic-sub">
+        <!-- 绘制上下文：笔刷粗细（仅画笔/橡皮）+ 蒙版语义提示 -->
+      <div v-if="isMaskTool" key="paint" class="vic-subbar vic-context">
+        <label v-if="isPaintTool" class="vic-brush">
+          <span class="vic-brush-label">{{ t.brushSize }}</span>
+          <input
+            v-model.number="brushSize"
+            type="range"
+            min="4"
+            max="120"
+            class="vic-range"
+            :aria-label="t.brushSize"
+          />
+          <span class="vic-brush-value">{{ brushSize }}</span>
+          <span
+            class="vic-brush-dot"
+            :style="{ width: `${brushDotSize}px`, height: `${brushDotSize}px` }"
+            aria-hidden="true"
+          />
+        </label>
+        <span class="vic-spacer" />
+        <span class="vic-mask-hint" aria-live="polite">
+          <span class="vic-mask-swatch" aria-hidden="true" />
+          {{ maskHint }}
+        </span>
+      </div>
+
+      <!-- 裁剪子工具栏 -->
+      <div v-else-if="tool === 'crop'" key="crop" class="vic-subbar vic-crop-bar">
+        <span class="vic-subbar-label">{{ t.crop }}</span>
+        <div class="vic-group">
+          <button
+            v-for="r in cropRatios"
+            :key="String(r)"
+            class="vic-chip"
+            :class="{ 'is-active': cropRatio === r }"
+            :aria-label="ratioLabel(r)"
+            :aria-pressed="cropRatio === r"
+            @click="onCropRatio(r)"
+          >
+            {{ ratioLabel(r) }}
+          </button>
+        </div>
+        <span class="vic-spacer" />
+        <button class="vic-btn vic-ghost" :aria-label="t.cancel" @click="onCancelCrop">
+          <VicIcon name="cancel" :size="16" />
+          <span>{{ t.cancel }}</span>
+        </button>
+        <button class="vic-btn vic-apply" :aria-label="t.applyCrop" @click="onApplyCrop">
+          <VicIcon name="apply" :size="16" />
+          <span>{{ t.applyCrop }}</span>
+        </button>
+      </div>
+
+      <!-- 调整子工具栏：亮度 / 对比度 / 饱和度 -->
+      <div v-else-if="tool === 'adjust'" key="adjust" class="vic-subbar vic-adjust-bar">
+        <label class="vic-adjust">
+          <span class="vic-adjust-label">{{ t.brightness }}</span>
+          <input
+            v-model.number="adjust.brightness"
+            type="range"
+            min="-100"
+            max="100"
+            class="vic-range"
+            :aria-label="t.brightness"
+            @input="onAdjustInput"
+            @change="onAdjustCommit"
+          />
+          <span class="vic-adjust-value">{{ adjust.brightness }}</span>
+        </label>
+        <label class="vic-adjust">
+          <span class="vic-adjust-label">{{ t.contrast }}</span>
+          <input
+            v-model.number="adjust.contrast"
+            type="range"
+            min="-100"
+            max="100"
+            class="vic-range"
+            :aria-label="t.contrast"
+            @input="onAdjustInput"
+            @change="onAdjustCommit"
+          />
+          <span class="vic-adjust-value">{{ adjust.contrast }}</span>
+        </label>
+        <label class="vic-adjust">
+          <span class="vic-adjust-label">{{ t.saturation }}</span>
+          <input
+            v-model.number="adjust.saturate"
+            type="range"
+            min="-100"
+            max="100"
+            class="vic-range"
+            :aria-label="t.saturation"
+            @input="onAdjustInput"
+            @change="onAdjustCommit"
+          />
+          <span class="vic-adjust-value">{{ adjust.saturate }}</span>
+        </label>
+        <span class="vic-spacer" />
+        <button class="vic-btn vic-ghost" :aria-label="t.reset" @click="onAdjustReset">
+          {{ t.reset }}
+        </button>
+      </div>
+      </Transition>
     </div>
-    <div v-if="tool === 'adjust'" class="vic-adjust-bar">
-      <label class="vic-adjust">
-        {{ t.brightness }} {{ adjust.brightness }}
-        <input
-          v-model.number="adjust.brightness"
-          type="range"
-          min="-100"
-          max="100"
-          :aria-label="t.brightness"
-          @input="onAdjustInput"
-          @change="onAdjustCommit"
-        />
-      </label>
-      <label class="vic-adjust">
-        {{ t.contrast }} {{ adjust.contrast }}
-        <input
-          v-model.number="adjust.contrast"
-          type="range"
-          min="-100"
-          max="100"
-          :aria-label="t.contrast"
-          @input="onAdjustInput"
-          @change="onAdjustCommit"
-        />
-      </label>
-      <label class="vic-adjust">
-        {{ t.saturation }} {{ adjust.saturate }}
-        <input
-          v-model.number="adjust.saturate"
-          type="range"
-          min="-100"
-          max="100"
-          :aria-label="t.saturation"
-          @input="onAdjustInput"
-          @change="onAdjustCommit"
-        />
-      </label>
-      <span class="vic-spacer" />
-      <button class="vic-ghost" :aria-label="t.reset" @click="onAdjustReset">{{ t.reset }}</button>
-    </div>
+
     <div
       ref="canvasHost"
       class="vic-canvas"
