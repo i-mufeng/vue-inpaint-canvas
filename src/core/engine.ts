@@ -34,8 +34,8 @@ const IDENTITY_TRANSFORM: TransformState = { crop: null, rotate: 0, flipX: false
 const PAINT_COLOR = "rgba(124, 92, 255, 0.55)";
 /** 判定"已涂抹"的 alpha 阈值，过滤抗锯齿边缘的微弱像素。 */
 const PAINT_ALPHA_THRESHOLD = 10;
-/** 笔刷光标圆环颜色（显示层，不导出）。 */
-const CURSOR_COLOR = "rgba(124, 92, 255, 0.9)";
+/** 笔刷光标圆环描边色（显示层，不导出）。用白色 + 黑投影，在任意明暗背景上都清晰。 */
+const CURSOR_COLOR = "rgba(255, 255, 255, 0.95)";
 /** 裁剪模式框外暗化遮罩色。 */
 const CROP_SHADE_COLOR = "rgba(0, 0, 0, 0.55)";
 /** 裁剪框边线色。 */
@@ -178,7 +178,9 @@ export class StudioEngine {
 
   setTool(tool: StudioTool): void {
     // engine 侧白名单二次防线：非启用工具静默忽略（UI 层已门控按钮）。
-    if (!this.isToolEnabled(tool)) return;
+    // 例外：'pan' 是中性查看态（不绘制、不进任何覆盖层），始终放行——作为无可用画笔工具时的安全默认，
+    // 避免落到「画笔/裁剪」等会改图或铺满覆盖层的工具上（旧版对无 mask 模型默认进裁剪的根因）。
+    if (tool !== "pan" && !this.isToolEnabled(tool)) return;
     const prev = this.tool;
     this.tool = tool;
     // 切到非涂抹工具时收起笔刷光标圆环。
@@ -337,7 +339,14 @@ export class StudioEngine {
       this.cursorRing = new Konva.Circle({
         radius: this.brushSize / 2,
         stroke: CURSOR_COLOR,
-        strokeWidth: 1,
+        strokeWidth: 1.5,
+        // 描边宽度恒为屏幕像素，**不随**「适应屏幕」缩放（stage.scale）衰减。否则 strokeWidth 按图像像素，
+        // 大图缩小显示时被乘成 <1 物理像素而近乎不可见——这正是「鼠标进画板看不到画笔」的根因。
+        strokeScaleEnabled: false,
+        // 黑色微投影：白描边 + 黑投影在任意明暗/彩色背景上都凸显。
+        shadowColor: "rgba(0, 0, 0, 0.65)",
+        shadowBlur: 2,
+        shadowForStrokeEnabled: true,
         listening: false,
       });
       this.cursorLayer.add(this.cursorRing);

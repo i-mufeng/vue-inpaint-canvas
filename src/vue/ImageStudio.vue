@@ -57,7 +57,10 @@ const emit = defineEmits<{
 
 const canvasHost = useTemplateRef<HTMLDivElement>("canvasHost");
 const brushSize = ref(brushSizeProp);
-const tool = ref<StudioTool>("brush");
+// 初始/回退工具：启用集含画笔则用画笔（最常用），否则用 'pan' 中性查看态——
+// 绝不默认落到裁剪等会铺满覆盖层、改动画幅的工具（旧版对无 mask 模型默认进裁剪的根因）。
+const defaultTool = computed<StudioTool>(() => (tools.includes("brush") ? "brush" : "pan"));
+const tool = ref<StudioTool>(defaultTool.value);
 const cropRatio = ref<number | "free">("free");
 const adjust = ref<AdjustValues>({ brightness: 0, contrast: 0, saturate: 0 });
 const state = ref<StudioStateBrief | null>(null);
@@ -184,11 +187,11 @@ function onCropRatio(r: number | "free"): void {
 }
 function onApplyCrop(): void {
   engine?.applyCrop();
-  tool.value = "brush";
+  tool.value = defaultTool.value;
 }
 function onCancelCrop(): void {
   engine?.cancelCrop();
-  tool.value = "brush";
+  tool.value = defaultTool.value;
 }
 // 调整（L5b）：@input 实时（CSS filter 预览 + engine 存值供导出烘焙），@change 释放时提交为可撤销命令。
 function onAdjustInput(): void {
